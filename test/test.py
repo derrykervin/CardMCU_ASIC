@@ -1,40 +1,36 @@
-# SPDX-FileCopyrightText: © 2024 Tiny Tapeout
-# SPDX-License-Identifier: Apache-2.0
-
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles
 
 
 @cocotb.test()
-async def test_project(dut):
-    dut._log.info("Start")
+async def test_cardmcu(dut):
+    dut.ena.value = 1
+    dut.ui_in.value = 0x00
 
-    # Set the clock period to 10 us (100 KHz)
-    clock = Clock(dut.clk, 10, unit="us")
-    cocotb.start_soon(clock.start())
+    # bit0 UART_RX = 1（UART空闲）
+    # bit2 SPI_MISO = 1
+    dut.uio_in.value = 0b00000101
+
+    cocotb.start_soon(
+        Clock(dut.clk, 100, units="ns").start()
+    )
 
     # Reset
-    dut._log.info("Reset")
-    dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
     dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
+    await ClockCycles(dut.clk, 5)
     dut.rst_n.value = 1
 
-    dut._log.info("Test project behavior")
+    # 等待CPU、UART、SPI运行
+    await ClockCycles(dut.clk, 500)
 
-    # Set the input values you want to test
-    dut.ui_in.value = 20
-    dut.uio_in.value = 30
+    gpio_out = int(dut.uo_out.value)
 
-    # Wait for one clock cycle to see the output values
-    await ClockCycles(dut.clk, 1)
+    dut._log.info(f"GPIO_OUT = 0x{gpio_out:02X}")
+    dut._log.info(f"UIO_OUT  = {dut.uio_out.value}")
+    dut._log.info(f"UIO_OE   = {dut.uio_oe.value}")
 
-    # The following assersion is just an example of how to check the output values.
-    # Change it to match the actual expected output of your module:
-    assert dut.uo_out.value == 50
+    assert gpio_out == 0xFF, \
+        f"Expected GPIO_OUT=0xFF, got 0x{gpio_out:02X}"
 
-    # Keep testing the module by changing the input values, waiting for
-    # one or more clock cycles, and asserting the expected output values.
+    dut._log.info("CardMCU C0 RTL TEST PASS")
